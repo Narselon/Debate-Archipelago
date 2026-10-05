@@ -2,15 +2,14 @@
 from __future__ import annotations
 
 import logging
-import threading
 import time
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QImage, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPen
 
+from capture import CaptureLoop
 from delaybuf import DelayBuffer
 from manager import Effect
-from overlay import OverlayWidget, exclude_from_capture
+from overlay import OverlayWidget, exclude_when_ready
 
 log = logging.getLogger("overlay.pip")
 
@@ -21,7 +20,7 @@ def _clamp(v, lo, hi):
 
 class _PipWidget(OverlayWidget):
     def __init__(self):
-        super().__init__()
+        super().__init__(translucent=False, click_through=False)   # non-layered, so Windows can exclude it from capture
         self.frame = None
 
     def paintEvent(self, _):
@@ -40,7 +39,7 @@ class PipEffect(Effect):
     name = "pip"
 
     def start(self, params):
-        self._thread = None
+        self._loop, self.w, self._stopped = None, None, False
         try:
             import mss  # noqa: F401
         except ImportError:
@@ -52,17 +51,23 @@ class PipEffect(Effect):
         self.delay = _clamp(float(params.get("delay", 0)), 0, 5)
         self.fps = _clamp(int(params.get("fps", 20)), 5, 30)
         self.buf = DelayBuffer()
-        self._stop = threading.Event()
         self.w = _PipWidget()
         self._sync()
         self.w.show()
-        exclude_from_capture(self.w)
+        exclude_when_ready(self.w, self._begin_capture)   # capture only starts once we're hidden from it
+
+    def _begin_capture(self, ok):
+        if self._stopped:
+            return
+        if not ok:
+            log.warning("PiP could not be hidden from screen capture; it may show itself where it overlaps the game")
         self._last_sync = time.monotonic()
-        self._thread = threading.Thread(target=self._capture_loop, daemon=True)
-        self._thread.start()
+        self._loop = CaptureLoop(lambda: self._shared["region"], lambda: self._shared["size"],
+                                 self.buf, self.fps, self.mode)
+        self._loop.start()
 
     def tick(self, now):
-        if self._thread is None:
+        if self._loop is None:
             return
         if now - self._last_sync > 1.0:       # follow the emulator window
             self._sync()
@@ -71,13 +76,12 @@ class PipEffect(Effect):
         self.w.update()
 
     def stop(self):
-        if self._thread is None:
-            return
-        self._stop.set()
-        self._thread.join(timeout=1.0)
-        self.w.close()
+        self._stopped = True
+        if self._loop is not None:
+            self._loop.stop()
+        if self.w is not None:
+            self.w.close()
 
-    # ---- main thread ----
     def _sync(self):
         r = self.ctx.target.rect()                       # DIPs, for placing the widget
         pw, ph = max(1, int(r.width() * self.scale)), max(1, int(r.height() * self.scale))
@@ -88,34 +92,3 @@ class PipEffect(Effect):
         l, t, rr, b = self.ctx.target.physical()         # physical pixels, for capturing
         self._shared = {"region": (l, t, rr - l, b - t),
                         "size": (max(1, int((rr - l) * self.scale)), max(1, int((b - t) * self.scale)))}
-
-    # ---- capture thread ----
-    def _capture_loop(self):
-        import mss
-        period, warned = 1.0 / self.fps, False
-        try:
-            sct = mss.mss()
-        except Exception as e:
-            log.warning("screen capture unavailable: %s", e)
-            return
-        with sct:
-            while not self._stop.is_set():
-                t0 = time.monotonic()
-                try:
-                    l, t, w, h = self._shared["region"]
-                    pw, ph = self._shared["size"]
-                    shot = sct.grab({"left": l, "top": t, "width": w, "height": h})
-                    img = QImage(shot.bgra, shot.width, shot.height, shot.width * 4, QImage.Format.Format_RGB32)
-                    img = img.scaled(pw, ph, Qt.AspectRatioMode.IgnoreAspectRatio,
-                                     Qt.TransformationMode.FastTransformation)   # also detaches from shot.bgra
-                    if self.mode == "mirror":
-                        img = img.mirrored(True, False)
-                    elif self.mode == "flip":
-                        img = img.mirrored(False, True)
-                    self.buf.push(t0, img)
-                except Exception as e:
-                    if not warned:
-                        log.warning("capture failed: %s", e)
-                        warned = True
-                    time.sleep(0.5)
-                self._stop.wait(max(0.0, period - (time.monotonic() - t0)))

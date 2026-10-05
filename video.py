@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QUrl
 
 from manager import Effect
-from overlay import exclude_from_capture, prepare
+from overlay import exclude_when_ready, prepare
 
 log = logging.getLogger("overlay.video")
 EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".m4v"}
@@ -77,7 +77,7 @@ class VideoEffect(Effect):
         self.player.setSource(QUrl.fromLocalFile(str(Path(clip).resolve())))
         self._place()
         self.w.show()
-        exclude_from_capture(self.w)
+        exclude_when_ready(self.w, lambda ok: None)
         self.player.play()
 
     def done(self):

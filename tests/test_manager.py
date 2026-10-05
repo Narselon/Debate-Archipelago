@@ -3,7 +3,7 @@ import time
 import pytest
 
 pytest.importorskip("PySide6")
-from PySide6.QtCore import QCoreApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import manager  # noqa: E402
 from manager import Effect, EffectManager  # noqa: E402
@@ -22,7 +22,7 @@ def make(name):
 
 @pytest.fixture
 def env(monkeypatch):
-    app = QCoreApplication.instance() or QCoreApplication([])
+    app = QApplication.instance() or QApplication([])
     Log.events = []
     clock = {"t": 1000.0}
     monkeypatch.setattr(manager.time, "monotonic", lambda: clock["t"])
@@ -91,3 +91,40 @@ def test_unknown_effect_ignored(env):
     m = mk()
     m._on_request("nope", {})
     assert not m.active
+
+
+def test_effect_can_end_itself(env):
+    mk, clock, _ = env
+
+    class Finishing(Effect):
+        finished = False
+        def start(self, params): pass
+        def stop(self): Log.events.append(("stop", "f"))
+        def done(self): return Finishing.finished
+
+    m = mk()
+    m.registry["f"] = Finishing
+    m._on_request("f", {"duration": 100})
+    m._tick()
+    assert "f" in m.active
+    Finishing.finished = True
+    m._tick()
+    assert "f" not in m.active and ("stop", "f") in Log.events
+
+
+def test_effects_see_their_end_time(env):
+    mk, clock, _ = env
+    seen = {}
+
+    class Fx(Effect):
+        def start(self, params): seen["start"] = self.ends_at
+        def stop(self): pass
+        def tick(self, now): seen["tick"] = self.ends_at
+
+    m = mk()
+    m.registry["fx"] = Fx
+    m._on_request("fx", {"duration": 10})
+    assert seen["start"] == clock["t"] + 10
+    m._on_request("fx", {"duration": 5})          # stacking extends the end time...
+    m._tick()
+    assert seen["tick"] == clock["t"] + 15        # ...and the effect is told about it

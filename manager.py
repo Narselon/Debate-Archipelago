@@ -17,6 +17,7 @@ DEFAULT_LIMITS = {"max_concurrent": 2, "max_duration": 60.0}
 class Effect:
     """Base class for effect plugins."""
     name = "base"
+    ends_at: float | None = None   # set by the manager; lets effects ease out before they end
 
     def __init__(self, ctx):
         self.ctx = ctx
@@ -24,6 +25,9 @@ class Effect:
     def start(self, params: dict) -> None: ...
     def stop(self) -> None: ...
     def tick(self, now: float) -> None: ...
+    def done(self) -> bool:
+        """Return True to end early (e.g. a video clip finished)."""
+        return False
 
 
 @dataclass
@@ -89,13 +93,17 @@ class EffectManager(QObject):
                 waiting.append((name, params))
                 continue
             eff = self.registry[name](self.ctx)
+            eff.ends_at = now + dur
             try:
                 eff.start(params)
             except Exception:
                 log.exception("effect %s failed to start", name)
                 continue
             self.active[name] = _Active(eff, now + dur, float(params.get("cooldown", 0)))
-            log.info("started %s for %.0fs", name, dur)
+            if eff.done():
+                log.warning("%s could not run (see the messages above); it will be cleaned up now", name)
+            else:
+                log.info("started %s for %.0fs", name, dur)
         self.queue = waiting
 
     def _stop(self, name: str, apply_cooldown: bool = True) -> None:
@@ -112,7 +120,8 @@ class EffectManager(QObject):
     def _tick(self) -> None:
         now = time.monotonic()
         for name, a in list(self.active.items()):
-            if now >= a.ends_at:
+            a.effect.ends_at = a.ends_at
+            if now >= a.ends_at or a.effect.done():
                 self._stop(name)
             else:
                 try:

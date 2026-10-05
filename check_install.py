@@ -11,16 +11,18 @@ sys.path.insert(0, str(ROOT))
 
 FILES = ["main.py", "listener.py", "manager.py", "profiles.py", "target.py", "effects.py", "colorfx.py",
          "colormath.py", "overlay.py", "pip_effect.py", "pip_video.py", "video.py", "delaybuf.py",
-         "remap.py", "inputs.py"]
+         "remap.py", "inputs.py", "viewmath.py", "magnifier.py", "capture.py", "zoom.py", "rotate.py"]
 OLD_FILES = {"pip.py": "rename-collision with the real pip; delete it", "grayscale.py": "replaced by colorfx.py; delete it"}
 SYMBOLS = [
     ("manager", "Effect.done"), ("manager", "EffectManager.clear_all"), ("target", "Target.physical"),
     ("video", "place_rect"), ("video", "fit_aspect"), ("overlay", "exclude_from_capture"),
     ("colorfx", "InvertEffect"), ("pip_effect", "PipEffect"), ("pip_video", "PipVideoEffect"),
     ("profiles", "Profile"), ("remap", "PadRemap"), ("delaybuf", "DelayBuffer"), ("listener", "APListener"),
-    ("inputs", "GamepadProxy"), ("effects", "REGISTRY"),
+    ("inputs", "GamepadProxy"), ("effects", "REGISTRY"), ("zoom", "ZoomEffect"), ("rotate", "RotateEffect"),
+    ("viewmath", "zoom_view"), ("capture", "CaptureLoop"), ("magnifier", "set_transform"), ("manager", "Effect.ends_at"),
+    ("overlay", "OverlayWidget"),
 ]
-EFFECTS = {"blinds", "grayscale", "invert", "reverse_controls", "pip", "video", "pip_video"}
+EFFECTS = {"blinds", "grayscale", "invert", "zoom", "rotate", "reverse_controls", "pip", "video", "pip_video"}
 
 problems = 0
 
@@ -55,6 +57,24 @@ for mod, pkg, why, win_only in DEPS:
         report(True, f"{mod}")
     except BaseException as e:
         report(False, f"{mod} failed to import ({type(e).__name__}); needed for {why}.  py -m pip install {pkg.split()[0]}")
+
+print("file versions (each marker proves the file is the current version)")
+MARKERS = {
+    "overlay.py": ["def exclude_when_ready", "click_through"],
+    "pip_effect.py": ["CaptureLoop", "exclude_when_ready"],
+    "colorfx.py": ["import magnifier"],
+    "manager.py": ["ends_at", "eff.done()"],
+    "effects.py": ["RotateEffect", "ZoomEffect", "PipVideoEffect"],
+    "rotate.py": ["exclude_when_ready", "CaptureLoop", "_on_excluded"],
+    "video.py": ["exclude_when_ready", "place_rect"],
+    "target.py": ["def physical", "_note"],
+    "main.py": ["--test-item"],
+}
+for fname, needles in MARKERS.items():
+    path = ROOT / fname
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    missing = [n for n in needles if n not in text]
+    report(not missing, f"{fname}" + (f"  <- OLD VERSION, missing: {missing}" if missing else ""))
 
 print("symbols (a missing one means that file is an older version)")
 for mod, path in SYMBOLS:

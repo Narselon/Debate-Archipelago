@@ -1,57 +1,29 @@
-"""Full-screen color effects (grayscale, invert) via the Windows Magnification API.
-Only one full-screen matrix can be active at a time, so active effects are composed into one."""
+"""Full-screen color effects (grayscale, invert) via the shared Magnification session.
+Only one full-screen color matrix exists at a time, so active effects are composed into one."""
 from __future__ import annotations
 
-import atexit
-import ctypes
 import logging
 import sys
-from ctypes import wintypes
 
+import magnifier
 from colormath import GRAY, IDENTITY, INVERT, compose, lerp
 from manager import Effect
 
 log = logging.getLogger("overlay.colorfx")
-
-_active: dict[str, list] = {}
-_initialized = False
-
-
-class _Effect(ctypes.Structure):
-    _fields_ = [("transform", ctypes.c_float * 25)]
-
-
-def _mag():
-    mag = ctypes.WinDLL("Magnification.dll")
-    mag.MagInitialize.restype = wintypes.BOOL
-    mag.MagUninitialize.restype = wintypes.BOOL
-    mag.MagSetFullscreenColorEffect.argtypes = [ctypes.POINTER(_Effect)]
-    mag.MagSetFullscreenColorEffect.restype = wintypes.BOOL
-    return mag
-
-
-def _set(matrix) -> bool:
-    return bool(_mag().MagSetFullscreenColorEffect(
-        ctypes.byref(_Effect((ctypes.c_float * 25)(*matrix)))))
+_active: dict = {}
 
 
 def _apply():
-    """Called on the Qt main thread only (Magnification must be used from the initialising thread)."""
-    global _initialized
-    if sys.platform != "win32":
+    if not magnifier.available():
         return
     if not _active:
-        if _initialized:
-            _set(IDENTITY)
-            _mag().MagUninitialize()
-            _initialized = False
+        if magnifier.is_active("color"):
+            magnifier.set_color(IDENTITY)      # reset the color matrix even if zoom keeps the session open
+            magnifier.end("color")
         return
-    if not _initialized:
-        if not _mag().MagInitialize():
-            log.error("MagInitialize failed")
-            return
-        _initialized = True
-    if not _set(compose(list(_active.values()))):
+    if not magnifier.begin("color"):
+        return
+    if not magnifier.set_color(compose(list(_active.values()))):
         log.error("MagSetFullscreenColorEffect failed")
 
 
@@ -63,9 +35,6 @@ def acquire(name: str, matrix) -> None:
 def release(name: str) -> None:
     _active.pop(name, None)
     _apply()
-
-
-atexit.register(lambda: (_active.clear(), _apply()))
 
 
 class _ColorEffect(Effect):

@@ -11,13 +11,17 @@ effects:
   "Nugget":     { effect: reverse_controls, duration: 20, cooldown: 60 }
   "Fresh Water": { effect: grayscale, duration: 25 }
   "Repel":      { effect: invert, duration: 15 }
-  "Super Potion": { effect: pip, duration: 40, mode: flip, scale: 0.3, corner: br }   # add delay: 3 for a laggy copy
+  "Super Potion": { effect: pip, duration: 40, mode: mirror, scale: 0.3, corner: br }   # add delay: 3 for a laggy copy
   "Escape Rope": { effect: video, clip_dir: clips, volume: 0.4, size: 1.0, duration: 30 }
   # small live gameplay over a full-size background video:
   "Max Revive": { effect: pip_video, layout: game_in_video, clip_dir: clips, scale: 0.3, corner: br, duration: 40 }
   # small video over full-size gameplay:
   "Max Ether":  { effect: pip_video, layout: video_in_game, clip_dir: clips, scale: 0.3, corner: tr, duration: 30 }
-  "Rotate":  { effect: rotate, duration: 20}
-  "Zoom":  { effect: zoom, duration: 20}
+  # zoom the (primary) screen in on the centre of the game window, easing in and out:
+  "Awakening":  { effect: zoom, factor: 2.5, ease: 1.5, focus_x: 0.5, focus_y: 0.5, duration: 20 }
+  # rotated screen (a rotated live copy over the game): 180 = upside down, 90 = sideways
+  "Moon Stone": { effect: rotate, angle: 180, ease: 1.5, duration: 20 }
+  "Sun Stone":  { effect: rotate, angle: 90, ease: 1.5, duration: 20 }
+  # slow continuous spin instead: { effect: rotate, angle: 0, spin: 20, duration: 15 }
   "Full Heal":  { effect: cleanse }                       # removes everything active
   # "Antidote": { effect: cleanse, only: [reverse_controls] }   # targeted cleanse

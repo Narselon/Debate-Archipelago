@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QPainter
 from capture import CaptureLoop
 from delaybuf import DelayBuffer
 from manager import Effect
-from overlay import OverlayWidget, exclude_from_capture
+from overlay import OverlayWidget, exclude_when_ready
 from viewmath import envelope, rotated_fit_scale
 
 log = logging.getLogger("overlay.rotate")
@@ -23,7 +23,7 @@ def _clamp(v, lo, hi):
 
 class _RotateWidget(OverlayWidget):
     def __init__(self):
-        super().__init__(translucent=False)
+        super().__init__(translucent=False, click_through=False)
         self.frame = None
         self.theta = 0.0
 
@@ -48,36 +48,45 @@ class RotateEffect(Effect):
     name = "rotate"
 
     def start(self, params):
-        self._abort, self._loop = True, None
+        self._abort, self._ready, self._stopped = False, False, False
+        self._loop, self.w = None, None
         try:
             import mss  # noqa: F401
         except ImportError:
             log.warning("rotate needs `pip install mss`")
+            self._abort = True
             return
         self.angle = float(params.get("angle", 180))
         self.spin = _clamp(float(params.get("spin", 0)), -45.0, 45.0)    # slow on purpose (photosensitivity)
         self.ease = _clamp(float(params.get("ease", 1.5)), 0.0, 5.0)
         self.quality = _clamp(float(params.get("quality", 1.0)), 0.4, 1.0)
-        fps = _clamp(int(params.get("fps", 30)), 10, 60)
-        mode = "mirror" if params.get("mirror") else "normal"
+        self.fps = _clamp(int(params.get("fps", 30)), 10, 60)
+        self.mode = "mirror" if params.get("mirror") else "normal"
 
         self.buf = DelayBuffer()
         self.w = _RotateWidget()
-        self._sync()
+        r = self.ctx.target.rect()
+        self.w.setGeometry(r.left(), r.top(), 1, 1)   # start tiny: nothing flashes while we wait for exclusion
         self.w.show()
-        if not exclude_from_capture(self.w):
+        exclude_when_ready(self.w, self._on_excluded)
+
+    def _on_excluded(self, ok):
+        if self._stopped:
+            return
+        if not ok:
             log.error("rotate cancelled: Windows would not hide the overlay from capture, so it would "
                       "capture itself. See the SetWindowDisplayAffinity warning above.")
-            self.w.close()
+            self._abort = True               # the manager sees done() and cleans us up
             return
-        self._abort = False
+        self._sync()                         # now grow to the full game window
         self.t0 = self._last_sync = time.monotonic()
+        self._ready = True
         self._loop = CaptureLoop(lambda: self._shared["region"], lambda: self._shared["size"],
-                                 self.buf, fps, mode)
+                                 self.buf, self.fps, self.mode)
         self._loop.start()
 
     def tick(self, now):
-        if self._abort:
+        if self._abort or not self._ready:
             return
         if now - self._last_sync > 1.0:
             self._sync()
@@ -93,8 +102,10 @@ class RotateEffect(Effect):
         return self._abort
 
     def stop(self):
+        self._stopped = True
         if self._loop is not None:
             self._loop.stop()
+        if self.w is not None:
             self.w.close()
 
     def _sync(self):

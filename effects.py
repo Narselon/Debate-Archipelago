@@ -12,8 +12,8 @@ from manager import Effect
 from overlay import OverlayWidget, exclude_from_capture
 from pip_effect import PipEffect
 from pip_video import PipVideoEffect
-from video import VideoEffect
 from rotate import RotateEffect
+from video import VideoEffect
 from zoom import ZoomEffect
 
 log = logging.getLogger("overlay.effects")
@@ -100,9 +100,9 @@ REGISTRY = {
     "grayscale": GrayscaleEffect,
     "reverse_controls": ReverseControlsEffect,
     "invert": InvertEffect,
+    "zoom": ZoomEffect,
+    "rotate": RotateEffect,
     "pip": PipEffect,
     "video": VideoEffect,
     "pip_video": PipVideoEffect,
-    "rotate": RotateEffect,
-    "zoom": ZoomEffect,
 }

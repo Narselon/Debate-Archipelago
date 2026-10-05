@@ -13,7 +13,7 @@ log = logging.getLogger("overlay.capture")
 
 def _default_factory():
     import mss
-    return mss.mss()
+    return (getattr(mss, "MSS", None) or mss.mss)()     # mss.mss is deprecated in newer releases
 
 
 class CaptureLoop:
