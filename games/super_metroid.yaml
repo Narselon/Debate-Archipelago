@@ -1,0 +1,10 @@
+# Super Metroid has no filler items to hang traps on; map ordinary items to short effects,
+# or extend listener.py with Bounced/custom-tag triggers.
+game: "Super Metroid"
+window_match: { process: "snes9x*.exe" }
+input: gamepad
+limits: { max_concurrent: 1, max_duration: 30 }
+reverse_controls:
+  # gentle variant: swap jump and shoot only. Full flip: add up/down/left/right swaps.
+  buttons: { a: b, b: a }
+effects: {}

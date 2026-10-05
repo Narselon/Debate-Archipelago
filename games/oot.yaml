@@ -1,0 +1,9 @@
+game: "Ocarina of Time"
+window_match: { process: "EmuHawk.exe" }
+input: gamepad
+limits: { max_concurrent: 2, max_duration: 45 }
+reverse_controls:
+  # Assumes the emulator maps N64 C-buttons to the right stick (common). Adjust to your bindings.
+  axes: { lx: invert, ly: invert, rx: invert, ry: invert }
+  buttons: { a: b, b: a }
+effects: {}   # fill in with real item names from the OoT apworld

@@ -1,0 +1,9 @@
+websockets>=12
+PySide6>=6.6
+pyyaml
+pynput
+psutil
+mss
+vgamepad; sys_platform == "win32"
+pywin32; sys_platform == "win32"
+pytest
